@@ -7,7 +7,7 @@ import {
   GraduationCap,
   ShieldCheck,
 } from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient";
 import "./adminLogin.css";
 
 type AdminLoginProps = {
@@ -21,20 +21,14 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const normalizedLogin = login.trim().toLowerCase();
-
-  const getRoleName = () => {
-    if (normalizedLogin === "admin") return "Admin";
-    if (normalizedLogin.length > 0) return "Foydalanuvchi";
-
-    return "Foydalanuvchi";
-  };
+  const [roleName, setRoleName] = useState("Foydalanuvchi");
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     setError("");
+
+    const normalizedLogin = login.trim().toLowerCase();
 
     if (!normalizedLogin || !password) {
       setError("Login va parolni kiriting!");
@@ -44,24 +38,7 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
     setIsLoading(true);
 
     try {
-      // Admin uchun vaqtinchalik mavjud kirish
-      if (normalizedLogin === "admin" && password === "12345") {
-        sessionStorage.setItem("homework_authenticated", "true");
-        sessionStorage.setItem("homework_user_role", "admin");
-        sessionStorage.setItem("homework_user_login", "admin");
-        sessionStorage.setItem("admin_authenticated", "true");
-
-        onLogin();
-        return;
-      }
-
-      /*
-       * Teacher va student Supabase Auth orqali kiradi.
-       *
-       * Auth email formati:
-       * login@homework.local
-       */
-      const authEmail = `${normalizedLogin}@homework.local`;
+      const authEmail = `${normalizedLogin}@homework.uz`;
 
       const { data: authData, error: authError } =
         await supabase.auth.signInWithPassword({
@@ -70,43 +47,47 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
         });
 
       if (authError || !authData.user) {
-        setError(
-          "Login yoki parol noto‘g‘ri. Auth foydalanuvchisi yaratilganini tekshiring.",
-        );
+        setError("Login yoki parol noto‘g‘ri!");
         return;
       }
 
-      const { data: userAccount, error: userError } = await supabase
+      const { data: account, error: accountError } = await supabase
         .from("users")
         .select("id, login, role, status, auth_user_id")
         .eq("login", normalizedLogin)
         .maybeSingle();
 
-      if (userError || !userAccount) {
+      if (accountError || !account) {
         await supabase.auth.signOut();
         setError("Foydalanuvchi tizimda topilmadi!");
         return;
       }
 
-      if (userAccount.auth_user_id !== authData.user.id) {
+      if (account.auth_user_id !== authData.user.id) {
         await supabase.auth.signOut();
-        setError(
-          "Bu login Supabase Auth foydalanuvchisi bilan bog‘lanmagan!",
-        );
+        setError("Account tizim bilan bog‘lanmagan!");
         return;
       }
 
-      if (userAccount.status === "Nofaol") {
+      if (account.status === "Nofaol") {
         await supabase.auth.signOut();
-        setError("Sizning hisobingiz vaqtincha nofaol!");
+        setError("Sizning hisobingiz nofaol!");
         return;
       }
 
-      const role = userAccount.role as UserRole;
+      const role = account.role as UserRole;
 
       sessionStorage.setItem("homework_authenticated", "true");
       sessionStorage.setItem("homework_user_role", role);
-      sessionStorage.setItem("homework_user_login", userAccount.login);
+      sessionStorage.setItem("homework_user_login", account.login);
+
+      sessionStorage.removeItem("admin_authenticated");
+      sessionStorage.removeItem("teacher_authenticated");
+      sessionStorage.removeItem("student_authenticated");
+
+      if (role === "admin") {
+        sessionStorage.setItem("admin_authenticated", "true");
+      }
 
       if (role === "teacher") {
         sessionStorage.setItem("teacher_authenticated", "true");
@@ -116,12 +97,38 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
         sessionStorage.setItem("student_authenticated", "true");
       }
 
+      setError("");
       onLogin();
-    } catch (submitError) {
-      console.error("Login xatosi:", submitError);
-      setError("Tizimga kirishda xatolik yuz berdi!");
+    } catch (loginError) {
+      console.error("Login xatosi:", loginError);
+      setError("Tizimga kirishda kutilmagan xatolik yuz berdi!");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getRoleIcon = () => {
+    if (roleName === "Admin") {
+      return <ShieldCheck size={18} />;
+    }
+
+    if (roleName === "O‘qituvchi") {
+      return <GraduationCap size={18} />;
+    }
+
+    return <UserRound size={18} />;
+  };
+
+  const handleLoginChange = (value: string) => {
+    const normalizedValue = value.trim().toLowerCase();
+
+    setLogin(value);
+    setError("");
+
+    if (normalizedValue === "admin") {
+      setRoleName("Admin");
+    } else {
+      setRoleName("Foydalanuvchi");
     }
   };
 
@@ -136,14 +143,8 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
         </div>
 
         <div className="admin-login-role-info">
-          {getRoleName() === "Admin" && <ShieldCheck size={18} />}
-          {getRoleName() === "O'qituvchi" && (
-            <GraduationCap size={18} />
-          )}
-          {getRoleName() !== "Admin" &&
-            getRoleName() !== "O'qituvchi" && <UserRound size={18} />}
-
-          <span>{getRoleName()}</span>
+          {getRoleIcon()}
+          <span>{roleName}</span>
         </div>
 
         <form className="admin-login-form" onSubmit={handleSubmit}>
@@ -158,10 +159,9 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
                 type="text"
                 placeholder="Loginni kiriting"
                 value={login}
-                onChange={(event) => {
-                  setLogin(event.target.value);
-                  setError("");
-                }}
+                onChange={(event) =>
+                  handleLoginChange(event.target.value)
+                }
                 autoComplete="username"
                 required
               />
@@ -202,8 +202,8 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
         </form>
 
         <div className="admin-login-hint">
-          <p>Admin test hisobi:</p>
-          <span>admin / 12345</span>
+          <p>Admin login:</p>
+          <span>admin / 123456</span>
         </div>
       </div>
     </main>
