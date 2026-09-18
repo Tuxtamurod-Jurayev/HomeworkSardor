@@ -1,0 +1,738 @@
+
+/* ========================================
+   TEACHERS PAGE
+======================================== */
+
+.teachers-page {
+    width: 100%;
+    min-width: 0;
+    animation: teachersFadeIn 0.25s ease;
+    box-sizing: border-box;
+  }
+  
+  .teachers-page *,
+  .teachers-page *::before,
+  .teachers-page *::after {
+    box-sizing: border-box;
+  }
+  
+  /* ========================================
+     HEADER
+  ======================================== */
+  
+  .teachers-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  
+  .teachers-title {
+    margin: 0;
+    color: var(--admin-text, #172033);
+    font-size: clamp(21px, 2vw, 28px);
+    font-weight: 750;
+    line-height: 1.3;
+    letter-spacing: -0.6px;
+  }
+  
+  .teachers-description {
+    margin: 8px 0 0;
+    color: var(--admin-muted, #8992a5);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  
+  /* ========================================
+     BUTTONS
+  ======================================== */
+  
+  .teachers-primary-button,
+  .teachers-secondary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 17px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      transform 0.2s ease,
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  
+  .teachers-primary-button {
+    color: #ffffff;
+    background: var(--admin-primary, #635bff);
+    box-shadow: 0 5px 14px rgba(99, 91, 255, 0.18);
+  }
+  
+  .teachers-primary-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(99, 91, 255, 0.25);
+  }
+  
+  .teachers-primary-button:active {
+    transform: translateY(0);
+  }
+  
+  .teachers-secondary-button {
+    color: var(--admin-text, #172033);
+    background: #ffffff;
+    border-color: var(--admin-border, #e7eaf1);
+  }
+  
+  .teachers-secondary-button:hover {
+    background: #f6f7fb;
+  }
+  
+  .teachers-primary-button:focus-visible,
+  .teachers-secondary-button:focus-visible,
+  .teacher-icon-button:focus-visible,
+  .teacher-status:focus-visible,
+  .teachers-close-button:focus-visible,
+  .teachers-password-toggle:focus-visible {
+    outline: 3px solid rgba(99, 91, 255, 0.25);
+    outline-offset: 2px;
+  }
+  
+  /* ========================================
+     TOOLBAR
+  ======================================== */
+  
+  .teachers-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+  
+  .teachers-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: min(100%, 360px);
+    min-height: 44px;
+    padding: 0 13px;
+    color: #98a1b2;
+    background: #ffffff;
+    border: 1px solid var(--admin-border, #e7eaf1);
+    border-radius: 11px;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  
+  .teachers-search:focus-within {
+    border-color: var(--admin-primary, #635bff);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.09);
+  }
+  
+  .teachers-search input {
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    color: var(--admin-text, #172033);
+    background: transparent;
+    border: 0;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  
+  .teachers-search input::placeholder {
+    color: #a1a8b7;
+  }
+  
+  .teachers-search input::-webkit-search-cancel-button {
+    cursor: pointer;
+  }
+  
+  .teachers-count {
+    color: var(--admin-muted, #8992a5);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  
+  .teachers-count strong {
+    color: var(--admin-text, #172033);
+    font-weight: 700;
+  }
+  
+  /* ========================================
+     TABLE
+  ======================================== */
+  
+  .teachers-table-card {
+    width: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid var(--admin-border, #e7eaf1);
+    border-radius: 16px;
+  }
+  
+  .teachers-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .teachers-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    text-align: left;
+  }
+  
+  .teachers-table th {
+    padding: 16px 20px;
+    color: #929bad;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--admin-border, #e7eaf1);
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  
+  .teachers-table td {
+    padding: 17px 20px;
+    color: var(--admin-text, #172033);
+    border-bottom: 1px solid #f0f2f6;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  
+  .teachers-table tbody tr {
+    transition: background-color 0.2s ease;
+  }
+  
+  .teachers-table tbody tr:hover {
+    background: #fafbff;
+  }
+  
+  .teachers-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  
+  /* ========================================
+     TEACHER USER
+  ======================================== */
+  
+  .teacher-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 190px;
+  }
+  
+  .teacher-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    color: var(--admin-primary, #635bff);
+    background: #efefff;
+    border-radius: 12px;
+  }
+  
+  .teacher-user-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 4px;
+  }
+  
+  .teacher-user-details strong {
+    overflow: hidden;
+    max-width: 180px;
+    color: var(--admin-text, #172033);
+    font-size: 13px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+  }
+  
+  .teacher-user-details span {
+    color: #a0a8b7;
+    font-size: 11px;
+  }
+  
+  .teacher-login {
+    color: #687287;
+    font-weight: 600;
+  }
+  
+  /* ========================================
+     STATUS
+  ======================================== */
+  
+  .teacher-status {
+    min-width: 70px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 20px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 750;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+  }
+  
+  .teacher-status:hover {
+    opacity: 0.75;
+  }
+  
+  .teacher-status.active {
+    color: #168457;
+    background: #e7f8ef;
+  }
+  
+  .teacher-status.inactive {
+    color: #9a6b16;
+    background: #fff4dc;
+  }
+  
+  /* ========================================
+     ACTIONS
+  ======================================== */
+  
+  .teacher-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .teacher-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    color: #7c879a;
+    background: #f6f7fa;
+    border: 1px solid #edf0f5;
+    border-radius: 9px;
+    cursor: pointer;
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease,
+      transform 0.2s ease;
+  }
+  
+  .teacher-icon-button:hover {
+    color: var(--admin-primary, #635bff);
+    background: #eeeeff;
+    transform: translateY(-1px);
+  }
+  
+  .teacher-icon-button.danger:hover {
+    color: #e5484d;
+    background: #fff0f0;
+  }
+  
+  /* ========================================
+     EMPTY STATE
+  ======================================== */
+  
+  .teachers-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 260px;
+    padding: 32px 20px;
+    color: #a0a8b7;
+    text-align: center;
+  }
+  
+  .teachers-empty h3 {
+    margin: 14px 0 7px;
+    color: var(--admin-text, #172033);
+    font-size: 16px;
+  }
+  
+  .teachers-empty p {
+    margin: 0;
+    color: #98a1b2;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  /* ========================================
+     MODAL
+  ======================================== */
+  
+  .teachers-modal-overlay {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 24px;
+    background: rgba(17, 24, 39, 0.48);
+    backdrop-filter: blur(5px);
+    animation: teachersFadeIn 0.2s ease;
+  }
+  
+  .teachers-modal {
+    width: min(100%, 500px);
+    max-height: calc(100dvh - 48px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 26px;
+    background: #ffffff;
+    border: 1px solid #edf0f5;
+    border-radius: 19px;
+    box-shadow: 0 24px 70px rgba(18, 25, 45, 0.2);
+    animation: teachersModalIn 0.22s ease;
+    overscroll-behavior: contain;
+  }
+  
+  .teachers-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  
+  .teachers-modal-header h3 {
+    margin: 0;
+    color: var(--admin-text, #172033);
+    font-size: 20px;
+    font-weight: 750;
+    line-height: 1.35;
+  }
+  
+  .teachers-modal-header p {
+    margin: 7px 0 0;
+    color: #98a1b2;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  
+  .teachers-close-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    padding: 0;
+    color: #8e98aa;
+    background: #f6f7fa;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease;
+  }
+  
+  .teachers-close-button:hover {
+    color: #e5484d;
+    background: #fff0f0;
+  }
+  
+  /* ========================================
+     FORM
+  ======================================== */
+  
+  .teachers-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  
+  .teachers-form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  
+  .teachers-form-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 8px;
+  }
+  
+  .teachers-form-group label {
+    color: #4d586d;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  
+  .teachers-form-group input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    padding: 0 12px;
+    color: var(--admin-text, #172033);
+    background: #ffffff;
+    border: 1px solid #e1e5ee;
+    border-radius: 10px;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 44px;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  
+  .teachers-form-group input:focus {
+    border-color: var(--admin-primary, #635bff);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.09);
+  }
+  
+  .teachers-form-group input::placeholder {
+    color: #aab1bf;
+  }
+  
+  /* ========================================
+     PASSWORD INPUT - FIXED
+  ======================================== */
+  
+  .teachers-password-wrapper {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  
+  .teachers-password-wrapper input {
+    display: block;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 48px 0 12px;
+    line-height: normal;
+  }
+  
+  /* Tugma input ichida joylashadi */
+  .teachers-password-toggle {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    margin: 0;
+    color: #929bad;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease;
+  }
+  
+  .teachers-password-toggle:hover {
+    color: var(--admin-primary, #635bff);
+    background: #f3f3ff;
+  }
+  
+  .teachers-password-toggle svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+  }
+  
+  .teachers-form-error {
+    margin: -3px 0 0;
+    color: #dc454c;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  
+  .teachers-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 4px;
+  }
+  
+  /* ========================================
+     ANIMATIONS
+  ======================================== */
+  
+  @keyframes teachersFadeIn {
+    from {
+      opacity: 0;
+    }
+  
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes teachersModalIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  
+  /* ========================================
+     TABLET
+  ======================================== */
+  
+  @media (max-width: 768px) {
+    .teachers-header {
+      flex-direction: column;
+      gap: 18px;
+    }
+  
+    .teachers-primary-button {
+      width: 100%;
+    }
+  
+    .teachers-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 12px;
+    }
+  
+    .teachers-search {
+      width: 100%;
+      max-width: none;
+    }
+  
+    .teachers-count {
+      text-align: right;
+    }
+  
+    .teachers-modal-overlay {
+      padding: 18px;
+    }
+  
+    .teachers-modal {
+      max-height: calc(100dvh - 36px);
+      padding: 22px;
+    }
+  }
+  
+  /* ========================================
+     MOBILE
+  ======================================== */
+  
+  @media (max-width: 520px) {
+    .teachers-title {
+      font-size: 22px;
+    }
+  
+    .teachers-description {
+      font-size: 13px;
+    }
+  
+    .teachers-form-row {
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+  
+    .teachers-modal-overlay {
+      align-items: flex-start;
+      padding: 14px;
+    }
+  
+    .teachers-modal {
+      max-height: calc(100dvh - 28px);
+      padding: 20px;
+      border-radius: 15px;
+    }
+  
+    .teachers-modal-header {
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+  
+    .teachers-modal-header h3 {
+      font-size: 17px;
+    }
+  
+    .teachers-modal-actions {
+      flex-direction: column-reverse;
+      gap: 9px;
+    }
+  
+    .teachers-modal-actions button {
+      width: 100%;
+    }
+  
+    .teachers-form {
+      gap: 16px;
+    }
+  }
+  
+  /* ========================================
+     SMALL MOBILE
+  ======================================== */
+  
+  @media (max-width: 360px) {
+    .teachers-modal-overlay {
+      padding: 8px;
+    }
+  
+    .teachers-modal {
+      padding: 16px;
+      border-radius: 13px;
+    }
+  
+    .teachers-modal-header h3 {
+      font-size: 16px;
+    }
+  
+    .teachers-form-group input {
+      font-size: 12px;
+    }
+  }
+  
+  /* ========================================
+     REDUCED MOTION
+  ======================================== */
+  
+  @media (prefers-reduced-motion: reduce) {
+    .teachers-page,
+    .teachers-modal-overlay,
+    .teachers-modal {
+      animation: none;
+    }
+  
+    .teachers-primary-button,
+    .teacher-icon-button,
+    .teachers-password-toggle {
+      transition: none;
+    }
+  }
