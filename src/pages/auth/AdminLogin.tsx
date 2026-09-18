@@ -1,11 +1,43 @@
 
 import { useState, type FormEvent } from "react";
-import { LockKeyhole, LogIn, UserRound } from "lucide-react";
+import {
+  LockKeyhole,
+  LogIn,
+  UserRound,
+  GraduationCap,
+  ShieldCheck,
+} from "lucide-react";
 import "./adminLogin.css";
 
 type AdminLoginProps = {
   onLogin: () => void;
 };
+
+type UserRole = "admin" | "teacher" | "student";
+
+type UserAccount = {
+  login: string;
+  password: string;
+  role: UserRole;
+};
+
+const USERS: UserAccount[] = [
+  {
+    login: "admin",
+    password: "12345",
+    role: "admin",
+  },
+  {
+    login: "teacher1",
+    password: "12345",
+    role: "teacher",
+  },
+  {
+    login: "student1",
+    password: "00000",
+    role: "student",
+  },
+];
 
 function AdminLogin({ onLogin }: AdminLoginProps) {
   const [login, setLogin] = useState("");
@@ -15,14 +47,51 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (login === "admin" && password === "12345") {
-      sessionStorage.setItem("admin_authenticated", "true");
-      setError("");
-      onLogin();
+    const normalizedLogin = login.trim().toLowerCase();
+
+    const user = USERS.find(
+      (account) =>
+        account.login === normalizedLogin &&
+        account.password === password,
+    );
+
+    if (!user) {
+      setError("Login yoki parol noto‘g‘ri!");
       return;
     }
 
-    setError("Login yoki parol noto‘g‘ri!");
+    sessionStorage.setItem("homework_authenticated", "true");
+    sessionStorage.setItem("homework_user_role", user.role);
+    sessionStorage.setItem("homework_user_login", user.login);
+
+    if (user.role === "admin") {
+      sessionStorage.setItem("admin_authenticated", "true");
+    }
+
+    if (user.role === "teacher") {
+      sessionStorage.setItem("teacher_authenticated", "true");
+    }
+
+    if (user.role === "student") {
+      sessionStorage.setItem("student_authenticated", "true");
+    }
+
+    setError("");
+    onLogin();
+  };
+
+  const getRoleName = () => {
+    const normalizedLogin = login.trim().toLowerCase();
+
+    const user = USERS.find(
+      (account) => account.login === normalizedLogin,
+    );
+
+    if (user?.role === "admin") return "Admin";
+    if (user?.role === "teacher") return "O‘qituvchi";
+    if (user?.role === "student") return "O‘quvchi";
+
+    return "Foydalanuvchi";
   };
 
   return (
@@ -31,8 +100,18 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
         <div className="admin-login-logo">H</div>
 
         <div className="admin-login-header">
-          <h1>Admin panel</h1>
-          <p>Homework boshqaruv tizimiga kirish</p>
+          <h1>Homework tizimi</h1>
+          <p>Admin, o‘qituvchi va o‘quvchi uchun kirish</p>
+        </div>
+
+        <div className="admin-login-role-info">
+          {getRoleName() === "Admin" && <ShieldCheck size={18} />}
+          {getRoleName() === "O‘qituvchi" && (
+            <GraduationCap size={18} />
+          )}
+          {getRoleName() === "O‘quvchi" && <UserRound size={18} />}
+
+          <span>{getRoleName()}</span>
         </div>
 
         <form className="admin-login-form" onSubmit={handleSubmit}>
@@ -45,9 +124,12 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
               <input
                 id="admin-login"
                 type="text"
-                placeholder="Admin login"
+                placeholder="Loginni kiriting"
                 value={login}
-                onChange={(event) => setLogin(event.target.value)}
+                onChange={(event) => {
+                  setLogin(event.target.value);
+                  setError("");
+                }}
                 autoComplete="username"
                 required
               />
@@ -63,9 +145,12 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
               <input
                 id="admin-password"
                 type="password"
-                placeholder="Admin paroli"
+                placeholder="Parolni kiriting"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError("");
+                }}
                 autoComplete="current-password"
                 required
               />
@@ -79,6 +164,11 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
             Kirish
           </button>
         </form>
+
+        <div className="admin-login-hint">
+          <p>Test uchun:</p>
+          <span>student1 / 00000</span>
+        </div>
       </div>
     </main>
   );

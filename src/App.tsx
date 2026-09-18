@@ -1,5 +1,5 @@
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   LockKeyhole,
   LogIn,
@@ -15,6 +15,8 @@ import {
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import SupabaseConnectionTest from "./components/SupabaseConnectionTest";
+
 import "./pages/auth/adminLogin.css";
 
 type UserRole = "admin" | "teacher" | "student";
@@ -44,15 +46,19 @@ const users: LoginUser[] = [
 ];
 
 function getDashboardPath(role: UserRole) {
-  if (role === "admin") {
-    return "/admin/dashboard";
-  }
+  switch (role) {
+    case "admin":
+      return "/admin/dashboard";
 
-  if (role === "teacher") {
-    return "/teacher/dashboard";
-  }
+    case "teacher":
+      return "/teacher/dashboard";
 
-  return "/student/dashboard";
+    case "student":
+      return "/student/dashboard";
+
+    default:
+      return "/login";
+  }
 }
 
 function UnifiedLogin() {
@@ -65,14 +71,12 @@ function UnifiedLogin() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    setError("");
-
     const normalizedLogin = login.trim().toLowerCase();
 
     const matchedUser = users.find(
       (user) =>
         user.login === normalizedLogin &&
-        user.password === password
+        user.password === password,
     );
 
     if (!matchedUser) {
@@ -81,14 +85,26 @@ function UnifiedLogin() {
     }
 
     sessionStorage.setItem(
-      `${matchedUser.role}_authenticated`,
-      "true"
+      "homework_authenticated",
+      "true",
     );
 
     sessionStorage.setItem(
       "homework_user_role",
-      matchedUser.role
+      matchedUser.role,
     );
+
+    sessionStorage.setItem(
+      "homework_user_login",
+      matchedUser.login,
+    );
+
+    sessionStorage.setItem(
+      `${matchedUser.role}_authenticated`,
+      "true",
+    );
+
+    setError("");
 
     navigate(getDashboardPath(matchedUser.role), {
       replace: true,
@@ -123,7 +139,10 @@ function UnifiedLogin() {
                 type="text"
                 placeholder="Loginni kiriting"
                 value={login}
-                onChange={(event) => setLogin(event.target.value)}
+                onChange={(event) => {
+                  setLogin(event.target.value);
+                  setError("");
+                }}
                 autoComplete="username"
                 required
               />
@@ -141,9 +160,10 @@ function UnifiedLogin() {
                 type="password"
                 placeholder="Parolni kiriting"
                 value={password}
-                onChange={(event) =>
-                  setPassword(event.target.value)
-                }
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError("");
+                }}
                 autoComplete="current-password"
                 required
               />
@@ -174,13 +194,21 @@ function ProtectedRoute({
   children,
 }: {
   role: UserRole;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const isAuthenticated =
-    sessionStorage.getItem(`${role}_authenticated`) ===
+    sessionStorage.getItem("homework_authenticated") ===
     "true";
 
-  if (!isAuthenticated) {
+  const currentRole =
+    sessionStorage.getItem("homework_user_role");
+
+  const hasRoleAccess =
+    currentRole === role &&
+    sessionStorage.getItem(`${role}_authenticated`) ===
+      "true";
+
+  if (!isAuthenticated || !hasRoleAccess) {
     return <Navigate to="/login" replace />;
   }
 
@@ -191,10 +219,11 @@ function StudentDashboard() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    sessionStorage.removeItem("student_authenticated");
-    sessionStorage.removeItem("homework_user_role");
+    sessionStorage.clear();
 
-    navigate("/login", { replace: true });
+    navigate("/login", {
+      replace: true,
+    });
   };
 
   return (
@@ -203,7 +232,14 @@ function StudentDashboard() {
         Student Dashboard
       </h1>
 
-      <button type="button" onClick={handleLogout}>
+      <p>
+        Xush kelibsiz, o‘quvchi!
+      </p>
+
+      <button
+        type="button"
+        onClick={handleLogout}
+      >
         Chiqish
       </button>
     </main>
@@ -225,8 +261,18 @@ function App() {
         />
 
         <Route
+          path="/supabase-test"
+          element={<SupabaseConnectionTest />}
+        />
+
+        <Route
           path="/admin"
-          element={<Navigate to="/login" replace />}
+          element={
+            <Navigate
+              to="/admin/dashboard"
+              replace
+            />
+          }
         />
 
         <Route
@@ -240,7 +286,12 @@ function App() {
 
         <Route
           path="/teacher"
-          element={<Navigate to="/teacher/dashboard" replace />}
+          element={
+            <Navigate
+              to="/teacher/dashboard"
+              replace
+            />
+          }
         />
 
         <Route
@@ -255,7 +306,10 @@ function App() {
         <Route
           path="/student"
           element={
-            <Navigate to="/student/dashboard" replace />
+            <Navigate
+              to="/student/dashboard"
+              replace
+            />
           }
         />
 
