@@ -7,6 +7,7 @@ import {
   GraduationCap,
   ShieldCheck,
 } from "lucide-react";
+import { supabase } from "../../lib/supabaseClient";
 import "./adminLogin.css";
 
 type AdminLoginProps = {
@@ -15,83 +16,113 @@ type AdminLoginProps = {
 
 type UserRole = "admin" | "teacher" | "student";
 
-type UserAccount = {
-  login: string;
-  password: string;
-  role: UserRole;
-};
-
-const USERS: UserAccount[] = [
-  {
-    login: "admin",
-    password: "12345",
-    role: "admin",
-  },
-  {
-    login: "teacher1",
-    password: "12345",
-    role: "teacher",
-  },
-  {
-    login: "student1",
-    password: "00000",
-    role: "student",
-  },
-];
-
 function AdminLogin({ onLogin }: AdminLoginProps) {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const normalizedLogin = login.trim().toLowerCase();
+
+  const getRoleName = () => {
+    if (normalizedLogin === "admin") return "Admin";
+    if (normalizedLogin.length > 0) return "Foydalanuvchi";
+
+    return "Foydalanuvchi";
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedLogin = login.trim().toLowerCase();
+    setError("");
 
-    const user = USERS.find(
-      (account) =>
-        account.login === normalizedLogin &&
-        account.password === password,
-    );
-
-    if (!user) {
-      setError("Login yoki parol noto‘g‘ri!");
+    if (!normalizedLogin || !password) {
+      setError("Login va parolni kiriting!");
       return;
     }
 
-    sessionStorage.setItem("homework_authenticated", "true");
-    sessionStorage.setItem("homework_user_role", user.role);
-    sessionStorage.setItem("homework_user_login", user.login);
+    setIsLoading(true);
 
-    if (user.role === "admin") {
-      sessionStorage.setItem("admin_authenticated", "true");
+    try {
+      // Admin uchun vaqtinchalik mavjud kirish
+      if (normalizedLogin === "admin" && password === "12345") {
+        sessionStorage.setItem("homework_authenticated", "true");
+        sessionStorage.setItem("homework_user_role", "admin");
+        sessionStorage.setItem("homework_user_login", "admin");
+        sessionStorage.setItem("admin_authenticated", "true");
+
+        onLogin();
+        return;
+      }
+
+      /*
+       * Teacher va student Supabase Auth orqali kiradi.
+       *
+       * Auth email formati:
+       * login@homework.local
+       */
+      const authEmail = `${normalizedLogin}@homework.local`;
+
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password,
+        });
+
+      if (authError || !authData.user) {
+        setError(
+          "Login yoki parol noto‘g‘ri. Auth foydalanuvchisi yaratilganini tekshiring.",
+        );
+        return;
+      }
+
+      const { data: userAccount, error: userError } = await supabase
+        .from("users")
+        .select("id, login, role, status, auth_user_id")
+        .eq("login", normalizedLogin)
+        .maybeSingle();
+
+      if (userError || !userAccount) {
+        await supabase.auth.signOut();
+        setError("Foydalanuvchi tizimda topilmadi!");
+        return;
+      }
+
+      if (userAccount.auth_user_id !== authData.user.id) {
+        await supabase.auth.signOut();
+        setError(
+          "Bu login Supabase Auth foydalanuvchisi bilan bog‘lanmagan!",
+        );
+        return;
+      }
+
+      if (userAccount.status === "Nofaol") {
+        await supabase.auth.signOut();
+        setError("Sizning hisobingiz vaqtincha nofaol!");
+        return;
+      }
+
+      const role = userAccount.role as UserRole;
+
+      sessionStorage.setItem("homework_authenticated", "true");
+      sessionStorage.setItem("homework_user_role", role);
+      sessionStorage.setItem("homework_user_login", userAccount.login);
+
+      if (role === "teacher") {
+        sessionStorage.setItem("teacher_authenticated", "true");
+      }
+
+      if (role === "student") {
+        sessionStorage.setItem("student_authenticated", "true");
+      }
+
+      onLogin();
+    } catch (submitError) {
+      console.error("Login xatosi:", submitError);
+      setError("Tizimga kirishda xatolik yuz berdi!");
+    } finally {
+      setIsLoading(false);
     }
-
-    if (user.role === "teacher") {
-      sessionStorage.setItem("teacher_authenticated", "true");
-    }
-
-    if (user.role === "student") {
-      sessionStorage.setItem("student_authenticated", "true");
-    }
-
-    setError("");
-    onLogin();
-  };
-
-  const getRoleName = () => {
-    const normalizedLogin = login.trim().toLowerCase();
-
-    const user = USERS.find(
-      (account) => account.login === normalizedLogin,
-    );
-
-    if (user?.role === "admin") return "Admin";
-    if (user?.role === "teacher") return "O‘qituvchi";
-    if (user?.role === "student") return "O‘quvchi";
-
-    return "Foydalanuvchi";
   };
 
   return (
@@ -106,10 +137,11 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
 
         <div className="admin-login-role-info">
           {getRoleName() === "Admin" && <ShieldCheck size={18} />}
-          {getRoleName() === "O‘qituvchi" && (
+          {getRoleName() === "O'qituvchi" && (
             <GraduationCap size={18} />
           )}
-          {getRoleName() === "O‘quvchi" && <UserRound size={18} />}
+          {getRoleName() !== "Admin" &&
+            getRoleName() !== "O'qituvchi" && <UserRound size={18} />}
 
           <span>{getRoleName()}</span>
         </div>
@@ -159,15 +191,19 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
 
           {error && <p className="admin-login-error">{error}</p>}
 
-          <button type="submit" className="admin-login-button">
+          <button
+            type="submit"
+            className="admin-login-button"
+            disabled={isLoading}
+          >
             <LogIn size={18} />
-            Kirish
+            {isLoading ? "Tekshirilmoqda..." : "Kirish"}
           </button>
         </form>
 
         <div className="admin-login-hint">
-          <p>Test uchun:</p>
-          <span>student1 / 00000</span>
+          <p>Admin test hisobi:</p>
+          <span>admin / 12345</span>
         </div>
       </div>
     </main>

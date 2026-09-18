@@ -1,5 +1,5 @@
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Edit,
   Eye,
@@ -10,16 +10,17 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+
+import { supabase } from "../../lib/supabaseClient";
 import "./teachers.css";
 
 type TeacherStatus = "Faol" | "Nofaol";
 
 type Teacher = {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   login: string;
-  password: string;
   groups: number;
   students: number;
   status: TeacherStatus;
@@ -32,18 +33,16 @@ type TeacherForm = {
   password: string;
 };
 
-const initialTeachers: Teacher[] = [
-  {
-    id: 1,
-    firstName: "Javohir",
-    lastName: "Isakov",
-    login: "javohir",
-    password: "12345",
-    groups: 3,
-    students: 42,
-    status: "Faol",
-  },
-];
+type SupabaseTeacher = {
+  id: string;
+  login: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  status: TeacherStatus | null;
+  groups_count: number | null;
+  students_count: number | null;
+};
 
 const emptyForm: TeacherForm = {
   firstName: "",
@@ -53,15 +52,18 @@ const emptyForm: TeacherForm = {
 };
 
 function Teachers() {
-  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTeacherId, setEditingTeacherId] = useState<number | null>(
+  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(
     null
   );
   const [form, setForm] = useState<TeacherForm>(emptyForm);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const filteredTeachers = useMemo(() => {
     const searchValue = search.toLowerCase().trim();
@@ -77,10 +79,56 @@ function Teachers() {
     );
   }, [teachers, search]);
 
+  const loadTeachers = async () => {
+    setIsLoading(true);
+    setError("");
+
+    const { data, error: fetchError } = await supabase
+      .from("users")
+      .select(
+        "id, login, first_name, last_name, full_name, status, groups_count, students_count"
+      )
+      .eq("role", "teacher")
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      console.error("O‘qituvchilarni yuklash xatosi:", fetchError);
+      setError(fetchError.message);
+      setIsLoading(false);
+      return;
+    }
+
+    const formattedTeachers: Teacher[] = (
+      (data ?? []) as SupabaseTeacher[]
+    ).map((teacher) => ({
+      id: teacher.id,
+      firstName:
+        teacher.first_name ??
+        teacher.full_name?.split(" ")[0] ??
+        "",
+      lastName:
+        teacher.last_name ??
+        teacher.full_name?.split(" ").slice(1).join(" ") ??
+        "",
+      login: teacher.login,
+      groups: teacher.groups_count ?? 0,
+      students: teacher.students_count ?? 0,
+      status: teacher.status ?? "Faol",
+    }));
+
+    setTeachers(formattedTeachers);
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadTeachers();
+  }, []);
+
   const openCreateModal = () => {
     setEditingTeacherId(null);
     setForm(emptyForm);
     setError("");
+    setSuccess("");
     setShowPassword(false);
     setIsModalOpen(true);
   };
@@ -92,15 +140,20 @@ function Teachers() {
       firstName: teacher.firstName,
       lastName: teacher.lastName,
       login: teacher.login,
-      password: teacher.password,
+      password: "",
     });
 
     setError("");
+    setSuccess("");
     setShowPassword(false);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
+    if (isSaving) {
+      return;
+    }
+
     setIsModalOpen(false);
     setEditingTeacherId(null);
     setForm(emptyForm);
@@ -120,7 +173,7 @@ function Teachers() {
     setError("");
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const firstName = form.firstName.trim();
@@ -128,63 +181,94 @@ function Teachers() {
     const login = form.login.trim().toLowerCase();
     const password = form.password.trim();
 
-    if (!firstName || !lastName || !login || !password) {
-      setError("Barcha maydonlarni to‘ldiring.");
+    if (!firstName || !lastName || !login) {
+      setError("Ism, familiya va loginni to‘ldiring.");
       return;
     }
 
-    if (password.length < 5) {
-      setError("Parol kamida 5 ta belgidan iborat bo‘lishi kerak.");
+    if (editingTeacherId === null && password.length < 5) {
+      setError("Yangi o‘qituvchi paroli kamida 5 ta belgidan iborat bo‘lishi kerak.");
       return;
     }
 
-    const duplicateLogin = teachers.some(
-      (teacher) =>
-        teacher.login.toLowerCase() === login &&
-        teacher.id !== editingTeacherId
-    );
+    setIsSaving(true);
+    setError("");
+    setSuccess("");
 
-    if (duplicateLogin) {
+    const { data: existingTeacher, error: duplicateError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("login", login)
+      .maybeSingle();
+
+    if (duplicateError) {
+      setError(duplicateError.message);
+      setIsSaving(false);
+      return;
+    }
+
+    if (
+      existingTeacher &&
+      existingTeacher.id !== editingTeacherId
+    ) {
       setError("Bu login allaqachon mavjud.");
+      setIsSaving(false);
       return;
     }
+
+    const fullName = `${firstName} ${lastName}`;
 
     if (editingTeacherId !== null) {
-      setTeachers((previousTeachers) =>
-        previousTeachers.map((teacher) =>
-          teacher.id === editingTeacherId
-            ? {
-                ...teacher,
-                firstName,
-                lastName,
-                login,
-                password,
-              }
-            : teacher
-        )
-      );
-    } else {
-      const newTeacher: Teacher = {
-        id: Date.now(),
-        firstName,
-        lastName,
-        login,
-        password,
-        groups: 0,
-        students: 0,
-        status: "Faol",
-      };
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          full_name: fullName,
+          login,
+        })
+        .eq("id", editingTeacherId)
+        .eq("role", "teacher");
 
-      setTeachers((previousTeachers) => [
-        ...previousTeachers,
-        newTeacher,
-      ]);
+      if (updateError) {
+        console.error("O‘qituvchini yangilash xatosi:", updateError);
+        setError(updateError.message);
+        setIsSaving(false);
+        return;
+      }
+
+      setSuccess("O‘qituvchi ma’lumotlari yangilandi.");
+    } else {
+      const { error: insertError } = await supabase
+        .from("users")
+        .insert({
+          first_name: firstName,
+          last_name: lastName,
+          full_name: fullName,
+          login,
+          role: "teacher",
+          status: "Faol",
+          groups_count: 0,
+          students_count: 0,
+        });
+
+      if (insertError) {
+        console.error("O‘qituvchi yaratish xatosi:", insertError);
+        setError(insertError.message);
+        setIsSaving(false);
+        return;
+      }
+
+      setSuccess("Yangi o‘qituvchi yaratildi.");
     }
 
+    await loadTeachers();
+
+    setIsSaving(false);
     closeModal();
   };
 
-  const handleDelete = (teacher: Teacher) => {
+  const handleDelete = async (teacher: Teacher) => {
     const confirmed = window.confirm(
       `${teacher.firstName} ${teacher.lastName} o‘qituvchisini o‘chirmoqchimisiz?`
     );
@@ -193,20 +277,54 @@ function Teachers() {
       return;
     }
 
+    setError("");
+    setSuccess("");
+
+    const { error: deleteError } = await supabase
+      .from("users")
+      .delete()
+      .eq("id", teacher.id)
+      .eq("role", "teacher");
+
+    if (deleteError) {
+      console.error("O‘qituvchini o‘chirish xatosi:", deleteError);
+      setError(deleteError.message);
+      return;
+    }
+
     setTeachers((previousTeachers) =>
       previousTeachers.filter((item) => item.id !== teacher.id)
     );
+
+    setSuccess("O‘qituvchi o‘chirildi.");
   };
 
-  const toggleStatus = (teacherId: number) => {
+  const toggleStatus = async (teacher: Teacher) => {
+    const newStatus: TeacherStatus =
+      teacher.status === "Faol" ? "Nofaol" : "Faol";
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({
+        status: newStatus,
+      })
+      .eq("id", teacher.id)
+      .eq("role", "teacher");
+
+    if (updateError) {
+      console.error("Holatni o‘zgartirish xatosi:", updateError);
+      setError(updateError.message);
+      return;
+    }
+
     setTeachers((previousTeachers) =>
-      previousTeachers.map((teacher) =>
-        teacher.id === teacherId
+      previousTeachers.map((item) =>
+        item.id === teacher.id
           ? {
-              ...teacher,
-              status: teacher.status === "Faol" ? "Nofaol" : "Faol",
+              ...item,
+              status: newStatus,
             }
-          : teacher
+          : item
       )
     );
   };
@@ -216,6 +334,7 @@ function Teachers() {
       <div className="teachers-header">
         <div>
           <h2 className="teachers-title">O‘qituvchilar</h2>
+
           <p className="teachers-description">
             O‘qituvchilarni yaratish va boshqarish
           </p>
@@ -230,6 +349,14 @@ function Teachers() {
           O‘qituvchi qo‘shish
         </button>
       </div>
+
+      {error && !isModalOpen && (
+        <p className="teachers-form-error">{error}</p>
+      )}
+
+      {success && !isModalOpen && (
+        <p className="teachers-success-message">{success}</p>
+      )}
 
       <div className="teachers-toolbar">
         <div className="teachers-search">
@@ -249,7 +376,11 @@ function Teachers() {
       </div>
 
       <div className="teachers-table-card">
-        {filteredTeachers.length > 0 ? (
+        {isLoading ? (
+          <div className="teachers-empty">
+            <p>O‘qituvchilar yuklanmoqda...</p>
+          </div>
+        ) : filteredTeachers.length > 0 ? (
           <div className="teachers-table-wrapper">
             <table className="teachers-table">
               <thead>
@@ -276,6 +407,7 @@ function Teachers() {
                           <strong>
                             {teacher.firstName} {teacher.lastName}
                           </strong>
+
                           <span>English Teacher</span>
                         </div>
                       </div>
@@ -299,7 +431,7 @@ function Teachers() {
                             ? "active"
                             : "inactive"
                         }`}
-                        onClick={() => toggleStatus(teacher.id)}
+                        onClick={() => void toggleStatus(teacher)}
                         title="Holatni o‘zgartirish"
                       >
                         {teacher.status}
@@ -321,7 +453,7 @@ function Teachers() {
                         <button
                           type="button"
                           className="teacher-icon-button danger"
-                          onClick={() => handleDelete(teacher)}
+                          onClick={() => void handleDelete(teacher)}
                           title="O‘chirish"
                           aria-label="O‘chirish"
                         >
@@ -337,8 +469,12 @@ function Teachers() {
         ) : (
           <div className="teachers-empty">
             <UserRound size={36} />
+
             <h3>O‘qituvchi topilmadi</h3>
-            <p>Qidiruv so‘rovingiz bo‘yicha natija mavjud emas.</p>
+
+            <p>
+              Hozircha bazada o‘qituvchilar mavjud emas.
+            </p>
           </div>
         )}
       </div>
@@ -361,9 +497,7 @@ function Teachers() {
                     : "Yangi o‘qituvchi"}
                 </h3>
 
-                <p>
-                  O‘qituvchi ma’lumotlarini to‘ldiring
-                </p>
+                <p>O‘qituvchi ma’lumotlarini to‘ldiring</p>
               </div>
 
               <button
@@ -379,9 +513,7 @@ function Teachers() {
             <form className="teachers-form" onSubmit={handleSubmit}>
               <div className="teachers-form-row">
                 <div className="teachers-form-group">
-                  <label htmlFor="teacher-first-name">
-                    Ism
-                  </label>
+                  <label htmlFor="teacher-first-name">Ism</label>
 
                   <input
                     id="teacher-first-name"
@@ -399,9 +531,7 @@ function Teachers() {
                 </div>
 
                 <div className="teachers-form-group">
-                  <label htmlFor="teacher-last-name">
-                    Familiya
-                  </label>
+                  <label htmlFor="teacher-last-name">Familiya</label>
 
                   <input
                     id="teacher-last-name"
@@ -435,13 +565,17 @@ function Teachers() {
               </div>
 
               <div className="teachers-form-group">
-                <label htmlFor="teacher-password">Parol</label>
+                <label htmlFor="teacher-password">
+                  {editingTeacherId !== null
+                    ? "Yangi parol (keyingi bosqichda ulanadi)"
+                    : "Parol (keyingi bosqichda Auth orqali ulanadi)"}
+                </label>
 
                 <div className="teachers-password-wrapper">
                   <input
                     id="teacher-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="O‘qituvchi paroli"
+                    placeholder="Kamida 5 ta belgi"
                     value={form.password}
                     onChange={(event) =>
                       handleInputChange(
@@ -450,7 +584,7 @@ function Teachers() {
                       )
                     }
                     minLength={5}
-                    required
+                    required={editingTeacherId === null}
                   />
 
                   <button
@@ -483,6 +617,7 @@ function Teachers() {
                   type="button"
                   className="teachers-secondary-button"
                   onClick={closeModal}
+                  disabled={isSaving}
                 >
                   Bekor qilish
                 </button>
@@ -490,10 +625,13 @@ function Teachers() {
                 <button
                   type="submit"
                   className="teachers-primary-button"
+                  disabled={isSaving}
                 >
-                  {editingTeacherId !== null
-                    ? "Saqlash"
-                    : "Yaratish"}
+                  {isSaving
+                    ? "Saqlanmoqda..."
+                    : editingTeacherId !== null
+                      ? "Saqlash"
+                      : "Yaratish"}
                 </button>
               </div>
             </form>
