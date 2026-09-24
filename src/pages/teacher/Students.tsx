@@ -108,12 +108,14 @@ function Students() {
     try {
       const { data, error: fetchErr } = await supabase
         .from("users")
-        .select("id, login, password, first_name, last_name, full_name, status")
+        .select(
+          "id, login, password, first_name, last_name, full_name, status, group_name, phone, parent_phone",
+        )
         .eq("role", "student")
         .order("created_at", { ascending: false });
 
       if (!fetchErr && data) {
-        const loadedStudents: Student[] = data.map((u) => {
+        const loadedStudents: Student[] = data.map((u: any) => {
           const metaStr =
             localStorage.getItem(`homework_student_meta_${u.id}`) ||
             localStorage.getItem(`homework_student_meta_${u.login}`);
@@ -131,18 +133,14 @@ function Students() {
               "",
             username: u.login,
             password: u.password || "12345",
-            phone: meta.phone || "",
-            parentPhone: meta.parentPhone || "",
-            group: meta.group || defaultGroupOptions[0],
+            phone: u.phone || meta.phone || "",
+            parentPhone: u.parent_phone || meta.parentPhone || "",
+            group: u.group_name || meta.group || defaultGroupOptions[0],
             status: u.status === "Nofaol" ? "blocked" : "active",
           };
         });
 
-        if (loadedStudents.length > 0) {
-          setStudents(loadedStudents);
-        } else {
-          setStudents(initialStudents);
-        }
+        setStudents(loadedStudents);
       }
     } catch (err) {
       console.warn("O‘quvchilarni yuklash xatosi:", err);
@@ -261,6 +259,9 @@ function Students() {
             full_name: fullName,
             password,
             status: dbStatus,
+            group_name: group,
+            phone: phone,
+            parent_phone: parentPhone,
           })
           .eq("id", editingStudent.id);
 
@@ -319,6 +320,9 @@ function Students() {
             full_name: fullName,
             role: "student",
             status: dbStatus,
+            group_name: group,
+            phone: phone,
+            parent_phone: parentPhone,
             groups_count: 0,
             students_count: 0,
           })

@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   BookOpen,
@@ -25,6 +24,7 @@ type Assignment = {
   title: string;
   description: string;
   subject: string;
+  group: string;
   questions: Question[];
 };
 
@@ -38,61 +38,16 @@ type Submission = {
   attemptNumber: number;
 };
 
-const defaultAssignments: Assignment[] = [
-  {
-    id: 1,
-    title: "English Grammar",
-    description: "Present Simple mavzusini tekshirish.",
-    subject: "Ingliz tili",
-    questions: [
-      {
-        id: 1,
-        question: "She ___ to school every day.",
-        options: ["go", "goes", "going", "gone"],
-        correctAnswer: "goes",
-      },
-      {
-        id: 2,
-        question: "They ___ students.",
-        options: ["is", "am", "are", "be"],
-        correctAnswer: "are",
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: "Vocabulary Test",
-    description: "Ingliz tili so‘z boyligi bo‘yicha test.",
-    subject: "Ingliz tili",
-    questions: [
-      {
-        id: 1,
-        question: "What is the meaning of 'Book'?",
-        options: ["Kitob", "Qalam", "Stol", "Maktab"],
-        correctAnswer: "Kitob",
-      },
-    ],
-  },
-];
-
 function Student() {
-  const [assignments, setAssignments] =
-    useState<Assignment[]>(defaultAssignments);
-
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-
   const [selectedAssignment, setSelectedAssignment] =
     useState<Assignment | null>(null);
-
-  const [answers, setAnswers] = useState<Record<number, string>>(
-    {},
-  );
-
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [currentQuestion, setCurrentQuestion] = useState(0);
-
   const [showResult, setShowResult] = useState(false);
-
   const [lastScore, setLastScore] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   const studentLogin =
     sessionStorage.getItem("homework_user_login") || "";
@@ -101,6 +56,10 @@ function Student() {
     studentLogin ||
     "O‘quvchi";
 
+  const [studentGroup, setStudentGroup] = useState<string>(
+    sessionStorage.getItem("homework_user_group") || "",
+  );
+
   const handleLogout = () => {
     sessionStorage.clear();
     window.location.href = "/login";
@@ -108,33 +67,47 @@ function Student() {
 
   useEffect(() => {
     async function loadAssignmentsData() {
-      // 1. LocalStorage-dan o‘qish
-      let localAssignments: Assignment[] = [];
-      const savedAssignments = localStorage.getItem(
-        "homework_assignments",
-      );
-      if (savedAssignments) {
+      setIsLoading(true);
+      let currentGroup = studentGroup;
+
+      // 1. Agar guruh hali saqlanmagan bo'lsa, bazadan o'qiymiz
+      if (!currentGroup && studentLogin) {
         try {
-          localAssignments = JSON.parse(savedAssignments);
-        } catch {
-          localAssignments = [];
+          const { data: userRow } = await supabase
+            .from("users")
+            .select("group_name")
+            .eq("login", studentLogin)
+            .maybeSingle();
+
+          if (userRow?.group_name) {
+            currentGroup = userRow.group_name;
+            setStudentGroup(currentGroup);
+            sessionStorage.setItem("homework_user_group", currentGroup);
+          }
+        } catch (uErr) {
+          console.warn("Guruhni aniqlash xatosi:", uErr);
         }
       }
 
-      // 2. Supabase-dan o‘qish
+      // 2. Supabase assignments jadvalidan FAQAT ushbu guruhga tegishli topshiriqlarni yuklash
       let dbAssignments: Assignment[] = [];
       try {
-        const { data, error } = await supabase
-          .from("assignments")
-          .select("*")
-          .order("created_at", { ascending: false });
+        let query = supabase.from("assignments").select("*");
+        if (currentGroup) {
+          query = query.eq("group_name", currentGroup);
+        }
+
+        const { data, error } = await query.order("created_at", {
+          ascending: false,
+        });
 
         if (!error && data && data.length > 0) {
           dbAssignments = data.map((item: any) => ({
             id: item.id,
             title: item.title,
-            description: item.description || "Topshiriqni bajaring",
+            description: item.description || "Topshiriqni diqqat bilan bajaring",
             subject: item.subject || "Ingliz tili",
+            group: item.group_name || "",
             questions: Array.isArray(item.questions) ? item.questions : [],
           }));
         }
@@ -142,17 +115,42 @@ function Student() {
         console.warn("Supabase topshiriqlarni yuklash xatosi:", dbErr);
       }
 
-      // Birlashtirish
+      // 3. Lokal keshdan ham FAQAT ushbu guruhga tegishli topshiriqlarni filtrlash
+      let localAssignments: Assignment[] = [];
+      const savedAssignments = localStorage.getItem("homework_assignments");
+      if (savedAssignments) {
+        try {
+          const parsed = JSON.parse(savedAssignments);
+          if (Array.isArray(parsed)) {
+            localAssignments = parsed
+              .filter((item: any) => !currentGroup || item.group === currentGroup)
+              .map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                description: item.description || "Topshiriqni bajaring",
+                subject: item.subject || "Ingliz tili",
+                group: item.group || "",
+                questions: Array.isArray(item.questions) ? item.questions : [],
+              }));
+          }
+        } catch {
+          localAssignments = [];
+        }
+      }
+
+      // Birlashtirish: FAQAT va FAQAT o'sha guruhga belgilangan topshiriqlar
       const allMap = new Map<string | number, Assignment>();
-      [...dbAssignments, ...localAssignments, ...defaultAssignments].forEach((a) => {
+      [...dbAssignments, ...localAssignments].forEach((a) => {
         if (!allMap.has(a.id)) {
-          allMap.set(a.id, a);
+          if (!currentGroup || a.group === currentGroup) {
+            allMap.set(a.id, a);
+          }
         }
       });
 
       setAssignments(Array.from(allMap.values()));
 
-      // Submissions yuklash
+      // 4. Submissions yuklash
       const savedSubmissions = localStorage.getItem(
         "homework_submissions",
       );
@@ -163,10 +161,12 @@ function Student() {
           setSubmissions([]);
         }
       }
+
+      setIsLoading(false);
     }
 
     void loadAssignmentsData();
-  }, []);
+  }, [studentGroup, studentLogin]);
 
   const startAssignment = (assignment: Assignment) => {
     setSelectedAssignment(assignment);
@@ -185,7 +185,6 @@ function Student() {
 
   const selectAnswer = (answer: string) => {
     const question = selectedAssignment?.questions[currentQuestion];
-
     if (!question) return;
 
     setAnswers((previousAnswers) => ({
@@ -196,11 +195,7 @@ function Student() {
 
   const nextQuestion = () => {
     if (!selectedAssignment) return;
-
-    if (
-      currentQuestion <
-      selectedAssignment.questions.length - 1
-    ) {
+    if (currentQuestion < selectedAssignment.questions.length - 1) {
       setCurrentQuestion((previousQuestion) => previousQuestion + 1);
     }
   };
@@ -223,10 +218,9 @@ function Student() {
     });
 
     const totalQuestions = selectedAssignment.questions.length;
-
-    const score = Math.round(
-      (correctAnswers / totalQuestions) * 100,
-    );
+    const score = totalQuestions > 0
+      ? Math.round((correctAnswers / totalQuestions) * 100)
+      : 100;
 
     const previousAttempts = submissions.filter(
       (submission) =>
@@ -254,9 +248,10 @@ function Student() {
       JSON.stringify(updatedSubmissions),
     );
 
+    // Supabase-ga saqlash
     try {
       await supabase.from("submissions").insert({
-        assignment_id: selectedAssignment.id,
+        assignment_id: typeof selectedAssignment.id === "number" ? selectedAssignment.id : null,
         assignment_title: selectedAssignment.title,
         student_login: studentLogin,
         student_name: studentName,
@@ -283,7 +278,6 @@ function Student() {
           </div>
 
           <h1>Topshiriq yakunlandi!</h1>
-
           <p>{selectedAssignment.title}</p>
 
           <strong className="student-result-score">
@@ -291,8 +285,7 @@ function Student() {
           </strong>
 
           <p className="student-result-description">
-            Natijangiz saqlandi. Siz ushbu topshiriqni yana
-            istalgan vaqtda qayta bajarishingiz mumkin.
+            Natijangiz saqlandi. Siz ushbu topshiriqni istalgan vaqtda yana qayta bajarishingiz mumkin.
           </p>
 
           <div className="student-result-actions">
@@ -326,7 +319,7 @@ function Student() {
       <div className="student-page">
         <div className="student-test-header">
           <div>
-            <span>Topshiriq bajarilmoqda</span>
+            <span>Topshiriq bajarilmoqda • {selectedAssignment.group}</span>
             <h1>{selectedAssignment.title}</h1>
           </div>
 
@@ -346,9 +339,9 @@ function Student() {
             </span>
 
             <span>
-              {Math.round(
-                ((currentQuestion + 1) / totalQuestions) * 100,
-              )}
+              {totalQuestions > 0
+                ? Math.round(((currentQuestion + 1) / totalQuestions) * 100)
+                : 0}
               %
             </span>
           </div>
@@ -357,7 +350,9 @@ function Student() {
             <div
               style={{
                 width: `${
-                  ((currentQuestion + 1) / totalQuestions) * 100
+                  totalQuestions > 0
+                    ? ((currentQuestion + 1) / totalQuestions) * 100
+                    : 0
                 }%`,
               }}
             />
@@ -369,55 +364,60 @@ function Student() {
             Savol {currentQuestion + 1}
           </span>
 
-          <h2>{currentQuestionData.question}</h2>
+          <h2 className="student-question-title">
+            {currentQuestionData.question}
+          </h2>
 
-          <div className="student-options">
-            {currentQuestionData.options.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={`student-option ${
-                  answers[currentQuestionData.id] === option
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() => selectAnswer(option)}
-              >
-                <span>{option}</span>
+          <div className="student-options-grid">
+            {currentQuestionData.options.map((option, index) => {
+              const isSelected =
+                answers[currentQuestionData.id] === option;
 
-                {answers[currentQuestionData.id] === option && (
-                  <CheckCircle size={19} />
-                )}
-              </button>
-            ))}
+              return (
+                <button
+                  type="button"
+                  key={index}
+                  className={`student-option-button ${
+                    isSelected ? "selected" : ""
+                  }`}
+                  onClick={() => selectAnswer(option)}
+                >
+                  <span className="student-option-index">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span>{option}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="student-question-actions">
             <button
               type="button"
-              className="student-secondary-button"
+              className="student-nav-button"
               onClick={previousQuestion}
               disabled={currentQuestion === 0}
             >
-              Oldingi
+              Oldingisi
             </button>
 
             {isLastQuestion ? (
               <button
                 type="button"
-                className="student-primary-button"
+                className="student-finish-button"
                 onClick={finishAssignment}
+                disabled={!answers[currentQuestionData.id]}
               >
-                <CheckCircle size={18} />
                 Yakunlash
               </button>
             ) : (
               <button
                 type="button"
-                className="student-primary-button"
+                className="student-next-button"
                 onClick={nextQuestion}
+                disabled={!answers[currentQuestionData.id]}
               >
-                Keyingi
+                Keyingisi
               </button>
             )}
           </div>
@@ -431,14 +431,15 @@ function Student() {
       <div className="student-page-header">
         <div>
           <span className="student-page-label">
-            O‘quvchi paneli
+            O‘quvchi paneli {studentGroup ? `• ${studentGroup}` : ""}
           </span>
 
           <h1>Salom, {studentName}!</h1>
 
           <p>
-            O‘qituvchingiz tomonidan berilgan topshiriqlarni
-            bajaring.
+            {studentGroup
+              ? `"${studentGroup}" guruhingiz uchun o‘qituvchi belgilagan topshiriqlarni bajaring.`
+              : "Guruhingizga berilgan topshiriqlarni bajaring."}
           </p>
         </div>
 
@@ -498,16 +499,29 @@ function Student() {
 
       <div className="student-section-header">
         <div>
-          <h2>Mavjud topshiriqlar</h2>
-          <p>Topshiriqni tanlab, bajarishni boshlang.</p>
+          <h2>Guruhingiz topshiriqlari</h2>
+          <p>
+            {studentGroup
+              ? `Faqat "${studentGroup}" guruhi uchun berilgan vazifalar:`
+              : "Topshiriqni tanlab, bajarishni boshlang:"}
+          </p>
         </div>
       </div>
 
-      {assignments.length === 0 ? (
+      {isLoading ? (
         <div className="student-empty-state">
           <BookOpen size={40} />
-          <h2>Hozircha topshiriqlar mavjud emas</h2>
-          <p>O‘qituvchi yangi topshiriq yaratishini kuting.</p>
+          <h2>Topshiriqlar yuklanmoqda...</h2>
+        </div>
+      ) : assignments.length === 0 ? (
+        <div className="student-empty-state">
+          <BookOpen size={40} />
+          <h2>Hozircha guruhingiz uchun topshiriqlar mavjud emas</h2>
+          <p>
+            {studentGroup
+              ? `O‘qituvchi "${studentGroup}" guruhi uchun yangi topshiriq tayinlaganda bu yerda paydo bo‘ladi.`
+              : "Sizga hali guruh biriktirilmagan yoki o‘qituvchi yangi topshiriq bermagan."}
+          </p>
         </div>
       ) : (
         <div className="student-assignments-grid">
@@ -523,37 +537,42 @@ function Student() {
                 key={assignment.id}
               >
                 <div className="student-assignment-icon">
-                  <BookOpen size={24} />
+                  <FileText size={22} />
                 </div>
 
-                <span className="student-assignment-subject">
-                  {assignment.subject}
-                </span>
+                <div className="student-assignment-content">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <h3>{assignment.title}</h3>
+                    <span className="student-badge">
+                      {assignment.group}
+                    </span>
+                  </div>
 
-                <h3>{assignment.title}</h3>
+                  <p>{assignment.description}</p>
 
-                <p>{assignment.description}</p>
+                  <div className="student-assignment-meta">
+                    <span>
+                      {assignment.questions.length} ta savol
+                    </span>
+                    <span>•</span>
+                    <span>{attemptCount} ta urinish</span>
+                  </div>
 
-                <div className="student-assignment-meta">
-                  <span>
-                    <FileText size={15} />
-                    {assignment.questions.length} ta savol
-                  </span>
-
-                  <span>
-                    <RotateCcw size={15} />
-                    {attemptCount} ta urinish
-                  </span>
+                  <button
+                    type="button"
+                    className="student-start-button"
+                    onClick={() => startAssignment(assignment)}
+                  >
+                    <Play size={16} />
+                    {attemptCount > 0 ? "Qayta ishlash" : "Boshlash"}
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  className="student-primary-button student-start-button"
-                  onClick={() => startAssignment(assignment)}
-                >
-                  <Play size={17} />
-                  Bajarishni boshlash
-                </button>
               </div>
             );
           })}
@@ -562,16 +581,11 @@ function Student() {
 
       {submissions.length > 0 && (
         <section className="student-history-section">
-          <div className="student-section-header">
-            <div>
-              <h2>Mening natijalarim</h2>
-              <p>Bajarilgan topshiriqlar tarixi.</p>
-            </div>
-          </div>
+          <h2>Oxirgi natijalar</h2>
 
           <div className="student-history-list">
             {submissions
-              .slice()
+              .slice(-5)
               .reverse()
               .map((submission) => (
                 <div

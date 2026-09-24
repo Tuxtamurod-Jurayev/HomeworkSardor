@@ -88,7 +88,9 @@ function UnifiedLogin() {
       // 1. Supabase maʼlumotlar bazasidan tekshirish
       const { data: dbUser, error: dbError } = await supabase
         .from("users")
-        .select("id, login, password, role, status, full_name, first_name, last_name")
+        .select(
+          "id, login, password, role, status, full_name, first_name, last_name, group_name",
+        )
         .eq("login", normalizedLogin)
         .maybeSingle();
 
@@ -116,6 +118,7 @@ function UnifiedLogin() {
         sessionStorage.setItem("homework_user_login", dbUser.login);
         sessionStorage.setItem("homework_user_name", displayName);
         sessionStorage.setItem("homework_user_id", dbUser.id);
+        sessionStorage.setItem("homework_user_group", dbUser.group_name || "");
         sessionStorage.setItem(`${role}_authenticated`, "true");
 
         setError("");
@@ -135,6 +138,7 @@ function UnifiedLogin() {
         sessionStorage.setItem("homework_user_role", matchedUser.role);
         sessionStorage.setItem("homework_user_login", matchedUser.login);
         sessionStorage.setItem("homework_user_name", matchedUser.login);
+        sessionStorage.setItem("homework_user_group", "Elementary A1");
         sessionStorage.setItem(`${matchedUser.role}_authenticated`, "true");
 
         setError("");
