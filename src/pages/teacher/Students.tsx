@@ -1,5 +1,4 @@
-
-import { FormEvent, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Edit,
   Phone,
@@ -9,12 +8,13 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { supabase } from "../../lib/supabaseClient";
 import "./students.css";
 
 type StudentStatus = "active" | "blocked";
 
 type Student = {
-  id: number;
+  id: string | number;
   firstName: string;
   lastName: string;
   phone: string;
@@ -27,33 +27,33 @@ type Student = {
 
 type StudentForm = Omit<Student, "id">;
 
-const groupOptions = [
-  "IELTS Beginner",
-  "English A2",
-  "English B1",
-  "IELTS Intermediate",
+const defaultGroupOptions = [
+  "Elementary A1",
+  "Pre-Intermediate A2",
+  "Intermediate B1",
+  "Upper-Intermediate B2",
 ];
 
 const initialStudents: Student[] = [
   {
-    id: 1,
+    id: "initial-1",
     firstName: "Ali",
     lastName: "Karimov",
     phone: "+998 90 123 45 67",
     username: "ali_karimov",
     password: "12345",
-    group: "IELTS Beginner",
+    group: "Elementary A1",
     parentPhone: "+998 91 111 22 33",
     status: "active",
   },
   {
-    id: 2,
+    id: "initial-2",
     firstName: "Madina",
     lastName: "Rahimova",
     phone: "+998 93 222 33 44",
     username: "madina_rahimova",
     password: "12345",
-    group: "English A2",
+    group: "Pre-Intermediate A2",
     parentPhone: "+998 94 555 66 77",
     status: "active",
   },
@@ -72,11 +72,89 @@ const emptyForm: StudentForm = {
 
 function Students() {
   const [students, setStudents] = useState<Student[]>(initialStudents);
+  const [groupOptions, setGroupOptions] = useState<string[]>(defaultGroupOptions);
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [form, setForm] = useState<StudentForm>(emptyForm);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 1. Bazadan guruhlarni yuklash
+  const loadGroups = async () => {
+    try {
+      const { data, error: groupErr } = await supabase
+        .from("groups")
+        .select("name")
+        .order("name", { ascending: true });
+
+      if (!groupErr && data && data.length > 0) {
+        const names = Array.from(
+          new Set(data.map((g) => g.name).filter(Boolean)),
+        );
+        if (names.length > 0) {
+          setGroupOptions(names);
+        }
+      }
+    } catch (err) {
+      console.warn("Guruhlarni yuklashda xatolik:", err);
+    }
+  };
+
+  // 2. Supabase users jadvalidan o‘quvchilarni yuklash
+  const loadStudents = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from("users")
+        .select("id, login, password, first_name, last_name, full_name, status")
+        .eq("role", "student")
+        .order("created_at", { ascending: false });
+
+      if (!fetchErr && data) {
+        const loadedStudents: Student[] = data.map((u) => {
+          const metaStr =
+            localStorage.getItem(`homework_student_meta_${u.id}`) ||
+            localStorage.getItem(`homework_student_meta_${u.login}`);
+          const meta = metaStr ? JSON.parse(metaStr) : {};
+
+          return {
+            id: u.id,
+            firstName:
+              u.first_name ||
+              u.full_name?.split(" ")[0] ||
+              "",
+            lastName:
+              u.last_name ||
+              u.full_name?.split(" ").slice(1).join(" ") ||
+              "",
+            username: u.login,
+            password: u.password || "12345",
+            phone: meta.phone || "",
+            parentPhone: meta.parentPhone || "",
+            group: meta.group || defaultGroupOptions[0],
+            status: u.status === "Nofaol" ? "blocked" : "active",
+          };
+        });
+
+        if (loadedStudents.length > 0) {
+          setStudents(loadedStudents);
+        } else {
+          setStudents(initialStudents);
+        }
+      }
+    } catch (err) {
+      console.warn("O‘quvchilarni yuklash xatosi:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadGroups();
+    void loadStudents();
+  }, []);
 
   const filteredStudents = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -101,7 +179,10 @@ function Students() {
 
   const openCreateModal = () => {
     setEditingStudent(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      group: groupOptions[0] || "",
+    });
     setError("");
     setIsModalOpen(true);
   };
@@ -123,6 +204,7 @@ function Students() {
   };
 
   const closeModal = () => {
+    if (isSaving) return;
     setIsModalOpen(false);
     setEditingStudent(null);
     setForm(emptyForm);
@@ -137,64 +219,167 @@ function Students() {
       ...previous,
       [field]: value,
     }));
+    setError("");
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
-    if (
-      !form.firstName.trim() ||
-      !form.lastName.trim() ||
-      !form.username.trim() ||
-      !form.password.trim() ||
-      !form.group
-    ) {
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    const username = form.username.trim().toLowerCase();
+    const password = form.password.trim();
+    const group = form.group.trim();
+    const phone = form.phone.trim();
+    const parentPhone = form.parentPhone.trim();
+    const status = form.status;
+
+    if (!firstName || !lastName || !username || !password || !group) {
       setError("Majburiy maydonlarni to‘ldiring.");
       return;
     }
 
-    const usernameExists = students.some(
-      (student) =>
-        student.username.toLowerCase() === form.username.toLowerCase() &&
-        student.id !== editingStudent?.id,
-    );
-
-    if (usernameExists) {
-      setError("Bu username allaqachon mavjud.");
+    if (password.length < 5) {
+      setError("Parol kamida 5 ta belgidan iborat bo‘lishi kerak.");
       return;
     }
 
-    if (editingStudent) {
-      setStudents((previous) =>
-        previous.map((student) =>
-          student.id === editingStudent.id
-            ? {
-                ...student,
-                ...form,
-              }
-            : student,
-        ),
-      );
-    } else {
-      const newStudent: Student = {
-        id: Date.now(),
-        ...form,
-      };
+    setIsSaving(true);
 
-      setStudents((previous) => [...previous, newStudent]);
+    try {
+      const fullName = `${firstName} ${lastName}`;
+      const dbStatus = status === "active" ? "Faol" : "Nofaol";
+
+      if (editingStudent) {
+        // Tahrirlash
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            full_name: fullName,
+            password,
+            status: dbStatus,
+          })
+          .eq("id", editingStudent.id);
+
+        if (updateError) {
+          console.warn("Supabase update error:", updateError);
+        }
+
+        // Metadata saqlash
+        localStorage.setItem(
+          `homework_student_meta_${editingStudent.id}`,
+          JSON.stringify({ phone, parentPhone, group }),
+        );
+        localStorage.setItem(
+          `homework_student_meta_${username}`,
+          JSON.stringify({ phone, parentPhone, group }),
+        );
+
+        setStudents((previous) =>
+          previous.map((s) =>
+            s.id === editingStudent.id
+              ? {
+                  ...s,
+                  firstName,
+                  lastName,
+                  username,
+                  password,
+                  group,
+                  phone,
+                  parentPhone,
+                  status,
+                }
+              : s,
+          ),
+        );
+      } else {
+        // Yangi o‘quvchi yaratish
+        const { data: existingUser } = await supabase
+          .from("users")
+          .select("id")
+          .eq("login", username)
+          .maybeSingle();
+
+        if (existingUser) {
+          setError("Bu username (login) allaqachon mavjud!");
+          setIsSaving(false);
+          return;
+        }
+
+        const { data: inserted, error: insertError } = await supabase
+          .from("users")
+          .insert({
+            login: username,
+            password,
+            first_name: firstName,
+            last_name: lastName,
+            full_name: fullName,
+            role: "student",
+            status: dbStatus,
+            groups_count: 0,
+            students_count: 0,
+          })
+          .select()
+          .maybeSingle();
+
+        if (insertError) {
+          console.warn("Supabase insert error:", insertError);
+        }
+
+        const newId = inserted?.id || `local_${Date.now()}`;
+
+        localStorage.setItem(
+          `homework_student_meta_${newId}`,
+          JSON.stringify({ phone, parentPhone, group }),
+        );
+        localStorage.setItem(
+          `homework_student_meta_${username}`,
+          JSON.stringify({ phone, parentPhone, group }),
+        );
+
+        const newStudentObj: Student = {
+          id: newId,
+          firstName,
+          lastName,
+          username,
+          password,
+          group,
+          phone,
+          parentPhone,
+          status,
+        };
+
+        setStudents((previous) => [newStudentObj, ...previous]);
+      }
+
+      closeModal();
+    } catch (saveErr) {
+      console.error("Saqlash xatosi:", saveErr);
+      setError("Ma’lumotlarni saqlashda xatolik yuz berdi!");
+    } finally {
+      setIsSaving(false);
     }
-
-    closeModal();
   };
 
-  const deleteStudent = (id: number) => {
+  const deleteStudent = async (id: string | number) => {
     const confirmed = window.confirm(
-      "Ushbu o‘quvchini o‘chirishni tasdiqlaysizmi?",
+      "Ushbu o‘quvchini nofaol qilish yoki o‘chirishni tasdiqlaysizmi?",
     );
 
     if (!confirmed) {
       return;
+    }
+
+    try {
+      await supabase
+        .from("users")
+        .update({ status: "Nofaol" })
+        .eq("id", id);
+    } catch (err) {
+      console.warn("Status update error:", err);
     }
 
     setStudents((previous) =>
@@ -202,16 +387,28 @@ function Students() {
     );
   };
 
-  const toggleStatus = (id: number) => {
+  const toggleStatus = async (student: Student) => {
+    const newStatus: StudentStatus =
+      student.status === "active" ? "blocked" : "active";
+    const dbStatus = newStatus === "active" ? "Faol" : "Nofaol";
+
+    try {
+      await supabase
+        .from("users")
+        .update({ status: dbStatus })
+        .eq("id", student.id);
+    } catch (err) {
+      console.warn("Status toggle error:", err);
+    }
+
     setStudents((previous) =>
-      previous.map((student) =>
-        student.id === id
+      previous.map((s) =>
+        s.id === student.id
           ? {
-              ...student,
-              status:
-                student.status === "active" ? "blocked" : "active",
+              ...s,
+              status: newStatus,
             }
-          : student,
+          : s,
       ),
     );
   };
@@ -222,7 +419,7 @@ function Students() {
         <div>
           <h1 className="students-title">O‘quvchilar</h1>
           <p className="students-description">
-            O‘quvchilarni boshqaring va ularning ma’lumotlarini tahrirlang.
+            O‘quvchilarni yarating, tahrirlang va Supabase bazasi bilan boshqaring.
           </p>
         </div>
 
@@ -252,7 +449,11 @@ function Students() {
         </span>
       </div>
 
-      {filteredStudents.length === 0 ? (
+      {isLoading ? (
+        <div className="students-empty">
+          <p>O‘quvchilar yuklanmoqda...</p>
+        </div>
+      ) : filteredStudents.length === 0 ? (
         <div className="students-empty">
           <UserRound size={42} />
           <h3>O‘quvchilar topilmadi</h3>
@@ -298,40 +499,44 @@ function Students() {
                         <Phone size={14} />
                         {student.phone || "Kiritilmagan"}
                       </span>
+
+                      {student.parentPhone && (
+                        <small>Ota-onasi: {student.parentPhone}</small>
+                      )}
                     </div>
                   </td>
 
-                  <td>{student.group}</td>
+                  <td>
+                    <span className="student-badge">{student.group}</span>
+                  </td>
 
                   <td>
                     <button
-                      className={`student-status ${
-                        student.status === "active"
-                          ? "status-active"
-                          : "status-blocked"
-                      }`}
-                      onClick={() => toggleStatus(student.id)}
+                      type="button"
+                      className={`student-status ${student.status}`}
+                      onClick={() => void toggleStatus(student)}
+                      title="Holatni o‘zgartirish"
                     >
-                      {student.status === "active"
-                        ? "Faol"
-                        : "Bloklangan"}
+                      {student.status === "active" ? "Faol" : "Bloklangan"}
                     </button>
                   </td>
 
                   <td>
                     <div className="student-actions">
                       <button
-                        className="student-icon-button edit"
-                        title="Tahrirlash"
+                        type="button"
+                        className="student-action-button"
                         onClick={() => openEditModal(student)}
+                        title="Tahrirlash"
                       >
                         <Edit size={16} />
                       </button>
 
                       <button
-                        className="student-icon-button delete"
+                        type="button"
+                        className="student-action-button delete"
+                        onClick={() => void deleteStudent(student.id)}
                         title="O‘chirish"
-                        onClick={() => deleteStudent(student.id)}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -347,29 +552,24 @@ function Students() {
       {isModalOpen && (
         <div
           className="students-modal-overlay"
-          onClick={closeModal}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModal();
+            }
+          }}
         >
-          <div
-            className="students-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="students-modal">
             <div className="students-modal-header">
-              <div>
-                <h2>
-                  {editingStudent
-                    ? "O‘quvchini tahrirlash"
-                    : "Yangi o‘quvchi"}
-                </h2>
-
-                <p>O‘quvchi ma’lumotlarini kiriting.</p>
-              </div>
+              <h2>
+                {editingStudent ? "O‘quvchini tahrirlash" : "Yangi o‘quvchi"}
+              </h2>
 
               <button
+                type="button"
                 className="students-close-button"
                 onClick={closeModal}
-                type="button"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
@@ -378,55 +578,40 @@ function Students() {
                 <label>
                   Ism *
                   <input
+                    type="text"
                     value={form.firstName}
                     onChange={(event) =>
                       handleChange("firstName", event.target.value)
                     }
                     placeholder="Ism"
+                    required
                   />
                 </label>
 
                 <label>
                   Familiya *
                   <input
+                    type="text"
                     value={form.lastName}
                     onChange={(event) =>
                       handleChange("lastName", event.target.value)
                     }
                     placeholder="Familiya"
+                    required
                   />
                 </label>
 
                 <label>
-                  Telefon
+                  Username (Login) *
                   <input
-                    value={form.phone}
-                    onChange={(event) =>
-                      handleChange("phone", event.target.value)
-                    }
-                    placeholder="+998 90 123 45 67"
-                  />
-                </label>
-
-                <label>
-                  Ota-ona telefoni
-                  <input
-                    value={form.parentPhone}
-                    onChange={(event) =>
-                      handleChange("parentPhone", event.target.value)
-                    }
-                    placeholder="+998 90 000 00 00"
-                  />
-                </label>
-
-                <label>
-                  Username *
-                  <input
+                    type="text"
                     value={form.username}
                     onChange={(event) =>
                       handleChange("username", event.target.value)
                     }
-                    placeholder="student_username"
+                    placeholder="Login (masalan: azizbek01)"
+                    disabled={editingStudent !== null}
+                    required
                   />
                 </label>
 
@@ -438,7 +623,8 @@ function Students() {
                     onChange={(event) =>
                       handleChange("password", event.target.value)
                     }
-                    placeholder="Parol"
+                    placeholder="Parol (kamida 5 belgi)"
+                    required
                   />
                 </label>
 
@@ -449,9 +635,9 @@ function Students() {
                     onChange={(event) =>
                       handleChange("group", event.target.value)
                     }
+                    required
                   >
                     <option value="">Guruhni tanlang</option>
-
                     {groupOptions.map((group) => (
                       <option key={group} value={group}>
                         {group}
@@ -475,26 +661,50 @@ function Students() {
                     <option value="blocked">Bloklangan</option>
                   </select>
                 </label>
+
+                <label>
+                  Telefon raqami
+                  <input
+                    type="text"
+                    value={form.phone}
+                    onChange={(event) =>
+                      handleChange("phone", event.target.value)
+                    }
+                    placeholder="+998 90 123 45 67"
+                  />
+                </label>
+
+                <label>
+                  Ota-onasi telefoni
+                  <input
+                    type="text"
+                    value={form.parentPhone}
+                    onChange={(event) =>
+                      handleChange("parentPhone", event.target.value)
+                    }
+                    placeholder="+998 91 111 22 33"
+                  />
+                </label>
               </div>
 
-              {error && (
-                <p className="students-form-error">{error}</p>
-              )}
+              {error && <p className="students-error">{error}</p>}
 
               <div className="students-modal-actions">
                 <button
-                  className="students-cancel-button"
                   type="button"
+                  className="students-secondary-button"
                   onClick={closeModal}
+                  disabled={isSaving}
                 >
                   Bekor qilish
                 </button>
 
                 <button
-                  className="students-submit-button"
                   type="submit"
+                  className="students-primary-button"
+                  disabled={isSaving}
                 >
-                  {editingStudent ? "Saqlash" : "Qo‘shish"}
+                  {isSaving ? "Saqlanmoqda..." : "Saqlash"}
                 </button>
               </div>
             </form>

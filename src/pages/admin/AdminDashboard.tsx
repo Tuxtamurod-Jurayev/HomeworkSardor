@@ -66,10 +66,6 @@ function AdminDashboard() {
   const [activeMenu, setActiveMenu] =
     useState<MenuId>("dashboard");
 
-  const activeMenuItem = menuItems.find(
-    (item) => item.id === activeMenu
-  );
-
   const handleLogout = () => {
     sessionStorage.removeItem("admin_authenticated");
     navigate("/admin", { replace: true });

@@ -15,7 +15,9 @@ import {
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import StudentDashboard from "./pages/student/StudentDashboard";
 import SupabaseConnectionTest from "./components/SupabaseConnectionTest";
+import { supabase } from "./lib/supabaseClient";
 
 import "./pages/auth/adminLogin.css";
 
@@ -67,48 +69,86 @@ function UnifiedLogin() {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const normalizedLogin = login.trim().toLowerCase();
 
-    const matchedUser = users.find(
-      (user) =>
-        user.login === normalizedLogin &&
-        user.password === password,
-    );
-
-    if (!matchedUser) {
-      setError("Login yoki parol noto‘g‘ri!");
+    if (!normalizedLogin || !password) {
+      setError("Login va parolni kiriting!");
       return;
     }
 
-    sessionStorage.setItem(
-      "homework_authenticated",
-      "true",
-    );
-
-    sessionStorage.setItem(
-      "homework_user_role",
-      matchedUser.role,
-    );
-
-    sessionStorage.setItem(
-      "homework_user_login",
-      matchedUser.login,
-    );
-
-    sessionStorage.setItem(
-      `${matchedUser.role}_authenticated`,
-      "true",
-    );
-
+    setIsLoading(true);
     setError("");
 
-    navigate(getDashboardPath(matchedUser.role), {
-      replace: true,
-    });
+    try {
+      // 1. Supabase maʼlumotlar bazasidan tekshirish
+      const { data: dbUser, error: dbError } = await supabase
+        .from("users")
+        .select("id, login, password, role, status, full_name, first_name, last_name")
+        .eq("login", normalizedLogin)
+        .maybeSingle();
+
+      if (!dbError && dbUser) {
+        if (dbUser.password && dbUser.password !== password) {
+          setError("Login yoki parol noto‘g‘ri!");
+          setIsLoading(false);
+          return;
+        }
+
+        if (dbUser.status === "Nofaol") {
+          setError("Hisobingiz nofaol qilingan. Administratorga murojaat qiling!");
+          setIsLoading(false);
+          return;
+        }
+
+        const role = dbUser.role as UserRole;
+        const displayName =
+          dbUser.full_name ||
+          `${dbUser.first_name || ""} ${dbUser.last_name || ""}`.trim() ||
+          dbUser.login;
+
+        sessionStorage.setItem("homework_authenticated", "true");
+        sessionStorage.setItem("homework_user_role", role);
+        sessionStorage.setItem("homework_user_login", dbUser.login);
+        sessionStorage.setItem("homework_user_name", displayName);
+        sessionStorage.setItem("homework_user_id", dbUser.id);
+        sessionStorage.setItem(`${role}_authenticated`, "true");
+
+        setError("");
+        navigate(getDashboardPath(role), { replace: true });
+        return;
+      }
+
+      // 2. Agar bazada topilmasa yoki tarmoqda uzilish bo‘lsa, zaxira foydalanuvchilar
+      const matchedUser = users.find(
+        (user) =>
+          user.login === normalizedLogin &&
+          user.password === password,
+      );
+
+      if (matchedUser) {
+        sessionStorage.setItem("homework_authenticated", "true");
+        sessionStorage.setItem("homework_user_role", matchedUser.role);
+        sessionStorage.setItem("homework_user_login", matchedUser.login);
+        sessionStorage.setItem("homework_user_name", matchedUser.login);
+        sessionStorage.setItem(`${matchedUser.role}_authenticated`, "true");
+
+        setError("");
+        navigate(getDashboardPath(matchedUser.role), { replace: true });
+        return;
+      }
+
+      setError("Login yoki parol noto‘g‘ri!");
+    } catch (loginErr) {
+      console.error("Login xatosi:", loginErr);
+      setError("Tizimga kirishda kutilmagan xatolik yuz berdi!");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -179,9 +219,10 @@ function UnifiedLogin() {
           <button
             type="submit"
             className="admin-login-button"
+            disabled={isLoading}
           >
             <LogIn size={18} />
-            Kirish
+            {isLoading ? "Tekshirilmoqda..." : "Kirish"}
           </button>
         </form>
       </div>
@@ -215,36 +256,7 @@ function ProtectedRoute({
   return children;
 }
 
-function StudentDashboard() {
-  const navigate = useNavigate();
 
-  const handleLogout = () => {
-    sessionStorage.clear();
-
-    navigate("/login", {
-      replace: true,
-    });
-  };
-
-  return (
-    <main className="main-content">
-      <h1 className="page-title">
-        Student Dashboard
-      </h1>
-
-      <p>
-        Xush kelibsiz, o‘quvchi!
-      </p>
-
-      <button
-        type="button"
-        onClick={handleLogout}
-      >
-        Chiqish
-      </button>
-    </main>
-  );
-}
 
 function App() {
   return (

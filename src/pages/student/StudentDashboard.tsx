@@ -5,11 +5,12 @@ import {
   CheckCircle,
   Clock,
   FileText,
+  LogOut,
   Play,
   RotateCcw,
   Trophy,
 } from "lucide-react";
-
+import { supabase } from "../../lib/supabaseClient";
 import "./student.css";
 
 type Question = {
@@ -20,7 +21,7 @@ type Question = {
 };
 
 type Assignment = {
-  id: number;
+  id: number | string;
   title: string;
   description: string;
   subject: string;
@@ -29,7 +30,7 @@ type Assignment = {
 
 type Submission = {
   id: number;
-  assignmentId: number;
+  assignmentId: number | string;
   assignmentTitle: string;
   score: number;
   totalQuestions: number;
@@ -93,30 +94,78 @@ function Student() {
 
   const [lastScore, setLastScore] = useState(0);
 
+  const studentLogin =
+    sessionStorage.getItem("homework_user_login") || "";
+  const studentName =
+    sessionStorage.getItem("homework_user_name") ||
+    studentLogin ||
+    "O‘quvchi";
+
+  const handleLogout = () => {
+    sessionStorage.clear();
+    window.location.href = "/login";
+  };
+
   useEffect(() => {
-    const savedAssignments = localStorage.getItem(
-      "homework_assignments",
-    );
+    async function loadAssignmentsData() {
+      // 1. LocalStorage-dan o‘qish
+      let localAssignments: Assignment[] = [];
+      const savedAssignments = localStorage.getItem(
+        "homework_assignments",
+      );
+      if (savedAssignments) {
+        try {
+          localAssignments = JSON.parse(savedAssignments);
+        } catch {
+          localAssignments = [];
+        }
+      }
 
-    const savedSubmissions = localStorage.getItem(
-      "homework_submissions",
-    );
-
-    if (savedAssignments) {
+      // 2. Supabase-dan o‘qish
+      let dbAssignments: Assignment[] = [];
       try {
-        setAssignments(JSON.parse(savedAssignments));
-      } catch {
-        setAssignments(defaultAssignments);
+        const { data, error } = await supabase
+          .from("assignments")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          dbAssignments = data.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            description: item.description || "Topshiriqni bajaring",
+            subject: item.subject || "Ingliz tili",
+            questions: Array.isArray(item.questions) ? item.questions : [],
+          }));
+        }
+      } catch (dbErr) {
+        console.warn("Supabase topshiriqlarni yuklash xatosi:", dbErr);
+      }
+
+      // Birlashtirish
+      const allMap = new Map<string | number, Assignment>();
+      [...dbAssignments, ...localAssignments, ...defaultAssignments].forEach((a) => {
+        if (!allMap.has(a.id)) {
+          allMap.set(a.id, a);
+        }
+      });
+
+      setAssignments(Array.from(allMap.values()));
+
+      // Submissions yuklash
+      const savedSubmissions = localStorage.getItem(
+        "homework_submissions",
+      );
+      if (savedSubmissions) {
+        try {
+          setSubmissions(JSON.parse(savedSubmissions));
+        } catch {
+          setSubmissions([]);
+        }
       }
     }
 
-    if (savedSubmissions) {
-      try {
-        setSubmissions(JSON.parse(savedSubmissions));
-      } catch {
-        setSubmissions([]);
-      }
-    }
+    void loadAssignmentsData();
   }, []);
 
   const startAssignment = (assignment: Assignment) => {
@@ -162,7 +211,7 @@ function Student() {
     }
   };
 
-  const finishAssignment = () => {
+  const finishAssignment = async () => {
     if (!selectedAssignment) return;
 
     let correctAnswers = 0;
@@ -204,6 +253,19 @@ function Student() {
       "homework_submissions",
       JSON.stringify(updatedSubmissions),
     );
+
+    try {
+      await supabase.from("submissions").insert({
+        assignment_id: selectedAssignment.id,
+        assignment_title: selectedAssignment.title,
+        student_login: studentLogin,
+        student_name: studentName,
+        score,
+        total_questions: totalQuestions,
+      });
+    } catch (subErr) {
+      console.warn("Supabase-ga topshiriq natijasini yozish xatosi:", subErr);
+    }
 
     setLastScore(score);
     setShowResult(true);
@@ -372,7 +434,7 @@ function Student() {
             O‘quvchi paneli
           </span>
 
-          <h1>Salom, O‘quvchi!</h1>
+          <h1>Salom, {studentName}!</h1>
 
           <p>
             O‘qituvchingiz tomonidan berilgan topshiriqlarni
@@ -380,8 +442,31 @@ function Student() {
           </p>
         </div>
 
-        <div className="student-header-icon">
-          <BookOpen size={25} />
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <div className="student-header-icon">
+            <BookOpen size={25} />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              background: "#ffffff",
+              cursor: "pointer",
+              fontWeight: 500,
+              fontSize: "14px",
+              color: "#dc2626",
+            }}
+          >
+            <LogOut size={16} />
+            Chiqish
+          </button>
         </div>
       </div>
 

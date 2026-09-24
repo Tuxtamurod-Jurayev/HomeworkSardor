@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   CalendarDays,
@@ -8,6 +8,7 @@ import {
   Search,
   Users,
 } from "lucide-react";
+import { supabase } from "../../lib/supabaseClient";
 import "./homeworks.css";
 
 type HomeworkStatus = "Faol" | "Yakunlangan" | "Qoralama";
@@ -77,9 +78,64 @@ const initialHomeworks: Homework[] = [
 ];
 
 function Homeworks() {
-  const [homeworks] = useState<Homework[]>(initialHomeworks);
+  const [homeworks, setHomeworks] = useState<Homework[]>(initialHomeworks);
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
+
+  useEffect(() => {
+    async function loadAllHomeworks() {
+      let extraHomeworks: Homework[] = [];
+      const saved = localStorage.getItem("homework_assignments");
+      if (saved) {
+        try {
+          const list = JSON.parse(saved);
+          if (Array.isArray(list)) {
+            extraHomeworks = list.map((item: any, idx: number) => ({
+              id: typeof item.id === "number" ? item.id : 100 + idx,
+              title: item.title,
+              teacher: item.teacher || "O‘qituvchi",
+              group: item.group || "Guruh",
+              assignedDate: item.assignedDate || "Yaqinda",
+              status: item.status || "Faol",
+              totalStudents: 15,
+              participatedStudents: 0,
+            }));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const { data, error } = await supabase.from("assignments").select("*");
+        if (!error && data && data.length > 0) {
+          const dbList: Homework[] = data.map((item: any, idx: number) => ({
+            id: typeof item.id === "number" ? item.id : 200 + idx,
+            title: item.title,
+            teacher: item.teacher_name || "O‘qituvchi",
+            group: item.group_name || "Guruh",
+            assignedDate: new Date(item.created_at || Date.now()).toLocaleDateString("uz-UZ"),
+            status: item.status || "Faol",
+            totalStudents: 15,
+            participatedStudents: 0,
+          }));
+          extraHomeworks = [...dbList, ...extraHomeworks];
+        }
+      } catch {
+        // ignore
+      }
+
+      if (extraHomeworks.length > 0) {
+        const combined = [...extraHomeworks, ...initialHomeworks];
+        const unique = Array.from(
+          new Map(combined.map((h) => [h.title + h.group, h])).values(),
+        );
+        setHomeworks(unique);
+      }
+    }
+
+    void loadAllHomeworks();
+  }, []);
 
   const filteredHomeworks = useMemo(() => {
     const searchValue = search.toLowerCase().trim();

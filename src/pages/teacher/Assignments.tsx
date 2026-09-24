@@ -1,22 +1,21 @@
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   BookOpen,
   CheckCircle,
   FileText,
   Headphones,
-  Image,
   Languages,
   Mic,
   PenLine,
   Plus,
   Save,
   Trash2,
-  Users,
   Volume2,
   X,
 } from "lucide-react";
+import { supabase } from "../../lib/supabaseClient";
 import "./assignments.css";
 
 interface AssignmentType {
@@ -118,7 +117,7 @@ const assignmentTypes: AssignmentType[] = [
   },
 ];
 
-const groups = [
+const defaultGroups = [
   "Elementary A1",
   "Pre-Intermediate A2",
   "Intermediate B1",
@@ -142,8 +141,32 @@ export default function Assignments() {
   const [selectedType, setSelectedType] =
     useState<AssignmentType | null>(null);
 
+  const [groups, setGroups] = useState<string[]>(defaultGroups);
   const [assignmentTitle, setAssignmentTitle] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
+
+  useEffect(() => {
+    async function loadGroupsFromDb() {
+      try {
+        const { data, error } = await supabase
+          .from("groups")
+          .select("name")
+          .order("name", { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          const groupNames = Array.from(
+            new Set(data.map((g) => g.name).filter(Boolean)),
+          );
+          if (groupNames.length > 0) {
+            setGroups(groupNames);
+          }
+        }
+      } catch (err) {
+        console.warn("Guruhlar yuklanmadi:", err);
+      }
+    }
+    void loadGroupsFromDb();
+  }, []);
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] =
@@ -314,7 +337,7 @@ export default function Assignments() {
     );
   };
 
-  const saveAssignment = () => {
+  const saveAssignment = async () => {
     if (!assignmentTitle.trim()) {
       setErrorMessage("Topshiriq nomini kiriting.");
       return;
@@ -330,14 +353,82 @@ export default function Assignments() {
       return;
     }
 
-    console.log("Yangi topshiriq:", {
-      title: assignmentTitle,
-      group: selectedGroup,
-      type: selectedType?.id,
-      questions,
+    const teacherLogin =
+      sessionStorage.getItem("homework_user_login") || "O‘qituvchi";
+    const teacherName =
+      sessionStorage.getItem("homework_user_name") || teacherLogin;
+
+    const formattedQuestions = questions.map((q) => {
+      const hasOptions = q.options && q.options.some((opt) => opt.trim());
+      const generatedOptions = hasOptions
+        ? q.options
+        : [q.answer, "Variant B", "Variant C", "Variant D"].filter(Boolean);
+
+      let qText = q.question.trim();
+      if (!qText) {
+        if (q.pairs.length > 0 && q.pairs[0].left) {
+          qText = "So‘zlarni tarjimasi bilan moslashtiring";
+        } else if (q.translation) {
+          qText = `"${q.translation}" so‘zining to‘g‘ri inglizcha tarjimasini toping:`;
+        } else {
+          qText = "Topshiriq savoli";
+        }
+      }
+
+      return {
+        id: q.id,
+        question: qText,
+        options: generatedOptions,
+        correctAnswer: q.answer || (q.pairs.length > 0 ? q.pairs[0].right : ""),
+        translation: q.translation,
+        pairs: q.pairs,
+        text: q.text,
+        audioUrl: q.audioUrl,
+      };
     });
 
-    alert("Topshiriq muvaffaqiyatli tayyorlandi!");
+    const newAssignment = {
+      id: Date.now(),
+      title: assignmentTitle.trim(),
+      description:
+        selectedType?.description || "Topshiriqni diqqat bilan bajaring.",
+      subject: "Ingliz tili",
+      group: selectedGroup,
+      type: selectedType?.id,
+      assignedDate: new Date().toLocaleDateString("uz-UZ"),
+      teacher: teacherName,
+      questions: formattedQuestions,
+      status: "Faol",
+    };
+
+    // 1. Supabase-ga saqlash (agar assignments jadvali mavjud bo'lsa)
+    try {
+      await supabase.from("assignments").insert({
+        title: newAssignment.title,
+        description: newAssignment.description,
+        group_name: newAssignment.group,
+        teacher_name: newAssignment.teacher,
+        type: newAssignment.type,
+        questions: newAssignment.questions,
+        status: "Faol",
+      });
+    } catch (dbErr) {
+      console.warn("Supabase assignments jadvaliga yozish xatosi:", dbErr);
+    }
+
+    // 2. localStorage-ga saqlash (o‘quvchi darhol ko‘rishi uchun)
+    try {
+      const saved = localStorage.getItem("homework_assignments");
+      const existingList = saved ? JSON.parse(saved) : [];
+      localStorage.setItem(
+        "homework_assignments",
+        JSON.stringify([newAssignment, ...existingList]),
+      );
+    } catch (localErr) {
+      console.error("Lokal saqlash xatosi:", localErr);
+    }
+
+    alert("Topshiriq muvaffaqiyatli saqlandi va o‘quvchilarga yuborildi!");
 
     setPage("types");
     setSelectedType(null);

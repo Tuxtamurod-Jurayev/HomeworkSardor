@@ -7,7 +7,7 @@ import {
   GraduationCap,
   ShieldCheck,
 } from "lucide-react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 import "./adminLogin.css";
 
 type AdminLoginProps = {
@@ -38,40 +38,30 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
     setIsLoading(true);
 
     try {
-      const authEmail = `${normalizedLogin}@homework.uz`;
+      const { data: account, error: accountError } = await supabase
+        .from("users")
+        .select("id, login, password, role, status, full_name, first_name, last_name")
+        .eq("login", normalizedLogin)
+        .maybeSingle();
 
-      const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password,
-        });
+      if (accountError) {
+        console.error("Login xatosi:", accountError);
+        setError("Baza bilan bog‘lanishda xatolik yuz berdi!");
+        return;
+      }
 
-      if (authError || !authData.user) {
+      if (!account) {
         setError("Login yoki parol noto‘g‘ri!");
         return;
       }
 
-      const { data: account, error: accountError } = await supabase
-        .from("users")
-        .select("id, login, role, status, auth_user_id")
-        .eq("login", normalizedLogin)
-        .maybeSingle();
-
-      if (accountError || !account) {
-        await supabase.auth.signOut();
-        setError("Foydalanuvchi tizimda topilmadi!");
-        return;
-      }
-
-      if (account.auth_user_id !== authData.user.id) {
-        await supabase.auth.signOut();
-        setError("Account tizim bilan bog‘lanmagan!");
+      if (account.password && account.password !== password) {
+        setError("Login yoki parol noto‘g‘ri!");
         return;
       }
 
       if (account.status === "Nofaol") {
-        await supabase.auth.signOut();
-        setError("Sizning hisobingiz nofaol!");
+        setError("Sizning hisobingiz nofaol holatda!");
         return;
       }
 
