@@ -9,7 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
-import "./homeworks.css";
+import "./Homeworks.css";
 
 type HomeworkStatus = "Faol" | "Yakunlangan" | "Qoralama";
 

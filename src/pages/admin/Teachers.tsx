@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../../lib/supabaseClient";
-import "./teachers.css";
+import "./Teachers.css";
 
 type TeacherStatus = "Faol" | "Nofaol";
 

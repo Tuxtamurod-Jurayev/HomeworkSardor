@@ -8,7 +8,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import "./students.css";
+import "./Students.css";
 
 type StudentStatus = "Faol" | "Nofaol";
 
